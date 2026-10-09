@@ -141,7 +141,7 @@ class MichelsonInterferometer(Scene):
             number = DecimalNumber(value(), num_decimal_places=places,
                                    font_size=25, color=color)
             number.move_to([5.05, y, 0], LEFT)
-            number.add_updater(lambda m, fn=value: m.set_value(fn()))
+            number.add_updater(lambda m, *, fn=value: m.set_value(fn()))
             labels.add(name)
             numbers.add(number)
         formulas = VGroup(
