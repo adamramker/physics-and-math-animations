@@ -1,0 +1,75 @@
+name: Render Michelson animation
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - michelson.py
+      - michelson_physics.py
+      - test_michelson_physics.py
+      - requirements.txt
+      - .github/workflows/render-michelson.yml
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      MICHELSON_OUTPUT_DIR: outputs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check syntax and physical checkpoints
+        run: |
+          python -m py_compile michelson.py michelson_physics.py test_michelson_physics.py
+          python -m unittest -v test_michelson_physics
+      - name: Install graphics runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg xvfb xauth libgl1-mesa-dri libegl1 libpango1.0-dev libcairo2-dev pkg-config fonts-dejavu-core
+          python -m pip install -r requirements.txt
+      - name: Render 720p animation
+        run: |
+          mkdir -p outputs
+          xvfb-run -a manimgl michelson.py MichelsonInterferometer -w -m --fps 24 --video_dir outputs
+      - name: Verify video and capture checkpoints
+        run: |
+          python - <<'PY'
+          import csv
+          import json
+          import math
+          import pathlib
+          import subprocess
+          videos = list(pathlib.Path("outputs").rglob("MichelsonInterferometer.mp4"))
+          assert len(videos) == 1, videos
+          movie = str(videos[0])
+          info = json.loads(subprocess.check_output([
+              "ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", movie
+          ]))
+          assert float(info["format"]["duration"]) >= 30
+          video = next(s for s in info["streams"] if s["codec_type"] == "video")
+          assert video["width"] == 1280 and video["height"] == 720
+          with open("outputs/michelson_readouts.csv", encoding="utf-8") as handle:
+              rows = list(csv.DictReader(handle))
+          assert len(rows) > 40
+          for row in rows:
+              assert math.isclose(float(row["path_difference_nm"]), 2 * float(row["mirror_displacement_nm"]), abs_tol=1e-7)
+              assert math.isclose(float(row["detector_intensity_W_m2"]) + float(row["source_return_intensity_W_m2"]), 1, abs_tol=1e-9)
+          for time, label in [(3, "equal-arms"), (7, "detector-bright"), (12, "source-bright"), (18, "mirror-scan")]:
+              subprocess.run(["ffmpeg", "-y", "-ss", str(time), "-i", movie,
+                              "-frames:v", "1", f"outputs/{label}.png"], check=True)
+          print("Verified video dimensions, duration, CSV, and complementary intensities")
+          PY
+      - name: Upload movie, numeric readouts, and checkpoint images
+        uses: actions/upload-artifact@v4
+        with:
+          name: michelson-animation
+          path: outputs/
+          if-no-files-found: error
+          retention-days: 30
