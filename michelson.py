@@ -17,6 +17,8 @@ class MichelsonInterferometer(Scene):
     input_intensity = 1.0  # W / m^2; equal beam areas at the two output ports
 
     def construct(self):
+        # ManimGL 1.7.2 parses the --fps option as a string.
+        self.camera.fps = int(self.camera.fps)
         # Motion is measured in wavelengths; the diagram magnifies it for visibility.
         motion = ValueTracker(0.0)
         clock = ValueTracker(0.0)
