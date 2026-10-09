@@ -2,10 +2,13 @@
 import csv
 import math
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
 from manimlib import *
+# ManimGL loads scenes by file path without adding their directory to sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from michelson_physics import michelson_readout
 
 
