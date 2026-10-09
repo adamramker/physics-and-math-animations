@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
   render:
@@ -37,7 +38,8 @@ jobs:
       - name: Render 720p animation
         run: |
           mkdir -p outputs
-          xvfb-run -a manimgl michelson.py MichelsonInterferometer -w -m --fps 24 --video_dir outputs
+          set -o pipefail
+          xvfb-run -a manimgl michelson.py MichelsonInterferometer -w -m --fps 24 --video_dir outputs 2>&1 | tee outputs/render.log
       - name: Verify video and capture checkpoints
         run: |
           python - <<'PY'
@@ -73,3 +75,16 @@ jobs:
           path: outputs/
           if-no-files-found: error
           retention-days: 30
+      - name: Report render diagnostics
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const log = fs.existsSync('outputs/render.log') ? fs.readFileSync('outputs/render.log', 'utf8') : 'Renderer did not start';
+            await github.rest.checks.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              name: 'Michelson render diagnostics', head_sha: context.sha,
+              status: 'completed', conclusion: 'neutral',
+              output: {title: 'Render log', summary: log.slice(-12000)}
+            });
